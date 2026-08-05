@@ -807,23 +807,36 @@ async function initLegal(){
   if(fab)fab.style.display='flex';
   const loadingEl=document.getElementById('loading-legal');
   const boardEl=document.getElementById('legal-board');
-  // Sempre tenta carregar — se já tem dados mostra imediatamente e atualiza em segundo plano
+
+  // Mostrar imediatamente se já tem dados
   if(legalItems.length>0){
     if(loadingEl)loadingEl.style.display='none';
-    if(boardEl)boardEl.style.display='flex';
+    if(boardEl){boardEl.style.display='flex';}
     renderLegal();
   }
-  // Atualiza em segundo plano (ou carrega pela primeira vez)
+
+  // Timeout de segurança — nunca trava mais de 5s
+  const safetyTimer=setTimeout(()=>{
+    if(loadingEl&&loadingEl.style.display!=='none'){
+      loadingEl.style.display='none';
+      if(boardEl)boardEl.style.display='flex';
+      renderLegal();
+    }
+  },5000);
+
+  // Tentar carregar
   try{
     const fresh=await loadLegal();
     legalItems=fresh;legalHash=hsh(fresh);
   }catch(e){
     if(legalItems.length===0)legalItems=[];
-    console.warn('Legal load:', e.message);
+    console.warn('Legal:', e.message);
   }
+  clearTimeout(safetyTimer);
   if(loadingEl)loadingEl.style.display='none';
   if(boardEl)boardEl.style.display='flex';
   renderLegal();
+
   // Polling — inicia apenas uma vez
   if(!window._legalPollStarted){
     window._legalPollStarted=true;
