@@ -232,12 +232,15 @@ tr:hover td{background:#f9fafb}
     <div style="padding:16px 18px">
       <div class="field"><label>Cliente / Empresa *</label><input id="ln-nome" placeholder="Razão social" autocomplete="off"/></div>
       <div class="grid2">
-        <div class="field"><label>Tipo de Serviço *</label><select id="ln-tipo"><option value="">— Selecionar —</option><option>Abertura de Empresa</option><option>Encerramento</option><option>Alteração Contratual</option><option>Alvará</option><option>Regularização Fiscal</option><option>Certidão</option><option>Procuração</option><option>Outro</option></select></div>
-        <div class="field"><label>Sócio Responsável</label><select id="ln-socio"><option value="">— Selecionar —</option><option>Pedro</option><option>Luciano</option><option>Rafael</option></select></div>
-        <div class="field"><label>Responsável Interno</label><input id="ln-resp" placeholder="Quem vai cuidar"/></div>
+        <div class="field"><label>Tipo de Serviço</label><select id="ln-tipo"><option value="">— Selecionar —</option><option>Abertura de Empresa</option><option>Encerramento</option><option>Alteração Contratual</option><option>Alvará</option><option>Regularização Fiscal</option><option>Certidão</option><option>Procuração</option><option>Outro</option></select></div>
+        <div class="field"><label>Valor do Serviço</label><input id="ln-valor" placeholder="R$ 0,00" inputmode="numeric"/></div>
+        <div class="field"><label>Sócio Advice</label><select id="ln-socio"><option value="">— Selecionar —</option><option>Pedro</option><option>Luciano</option><option>Rafael</option></select></div>
+        <div class="field"><label>Responsável pela Empresa</label><input id="ln-resp" placeholder="Nome do responsável"/></div>
+        <div class="field"><label>Contato</label><input id="ln-contato" placeholder="Telefone ou e-mail"/></div>
         <div class="field"><label>Prazo / Previsão</label><input type="date" id="ln-prazo"/></div>
       </div>
-      <div class="field"><label>Descrição / Observações</label><textarea id="ln-obs" placeholder="Detalhe o que precisa ser feito"></textarea></div>
+      <div class="field"><label>Dados do Cliente (para o processo)</label><textarea id="ln-dados" placeholder="CPF, RG, endereço, CNAE, capital social, etc."></textarea></div>
+      <div class="field"><label>Observações</label><textarea id="ln-obs" placeholder="Detalhe o que precisa ser feito"></textarea></div>
     </div>
     <div class="sheet-foot"><div class="foot-row"><button class="btn" onclick="closeLegalNew()" style="flex:.5">Cancelar</button><button class="btn btn-primary" onclick="saveLegalNew()">Adicionar</button></div></div>
   </div>
@@ -733,21 +736,29 @@ initCtrl();
 
 // ── LEGALIZAÇÃO ──
 const LEGAL_COLS=[
-  {id:'nova',label:'Solicitação Nova',color:'#0ea5e9'},
-  {id:'andamento',label:'Em Andamento',color:'#f59e0b'},
-  {id:'concluido_legal',label:'Concluído',color:'#16a34a'},
+  {id:'solicitacao',  label:'Solicitação',          color:'#6366f1'},
+  {id:'viabilidade',  label:'Viabilidade',           color:'#0ea5e9'},
+  {id:'dbe',          label:'DBE',                   color:'#f59e0b'},
+  {id:'requerimento', label:'Requerimento/Contrato', color:'#f97316'},
+  {id:'assinatura',   label:'Assinatura/Protocolo',  color:'#8b5cf6'},
+  {id:'deferido',     label:'Deferido',              color:'#10b981'},
+  {id:'finalizado',   label:'Finalizado',            color:'#16a34a'},
 ];
 const LEGAL_ST={
-  nova:{bg:'#e0f2fe',color:'#0369a1',label:'Solicitação Nova'},
-  andamento:{bg:'#fef3c7',color:'#92400e',label:'Em Andamento'},
-  concluido_legal:{bg:'#dcfce7',color:'#15803d',label:'Concluído'},
+  solicitacao: {bg:'#eef2ff',color:'#4338ca',label:'Solicitação'},
+  viabilidade: {bg:'#e0f2fe',color:'#0369a1',label:'Viabilidade'},
+  dbe:         {bg:'#fef3c7',color:'#92400e',label:'DBE'},
+  requerimento:{bg:'#fff7ed',color:'#c2410c',label:'Requerimento/Contrato'},
+  assinatura:  {bg:'#f5f3ff',color:'#6d28d9',label:'Assinatura/Protocolo'},
+  deferido:    {bg:'#d1fae5',color:'#065f46',label:'Deferido'},
+  finalizado:  {bg:'#dcfce7',color:'#15803d',label:'Finalizado'},
 };
-const LEGAL_NEXT={nova:'andamento',andamento:'concluido_legal',concluido_legal:null};
-const LEGAL_PREV={nova:null,andamento:'nova',concluido_legal:'andamento'};
+const LEGAL_NEXT={solicitacao:'viabilidade',viabilidade:'dbe',dbe:'requerimento',requerimento:'assinatura',assinatura:'deferido',deferido:'finalizado',finalizado:null};
+const LEGAL_PREV={solicitacao:null,viabilidade:'solicitacao',dbe:'viabilidade',requerimento:'dbe',assinatura:'requerimento',deferido:'assinatura',finalizado:'deferido'};
 
 let legalItems=[],legalHash='',legalSaving=false;
 
-function rowToLegal(r){return{id:r.id,nome:r.nome,tipo:r.tipo,socio:r.socio,responsavel:r.responsavel,prazo:r.prazo,obs:r.obs,status:r.status,criado_em:r.criado_em};}
+function rowToLegal(r){return{id:r.id,nome:r.nome,tipo:r.tipo,socio:r.socio,responsavel:r.responsavel,contato:r.contato,prazo:r.prazo,obs:r.obs,valor:r.valor,dados_cliente:r.dados_cliente,status:r.status,criado_em:r.criado_em};}
 async function loadLegal(){const d=await api('/legalizacoes?order=criado_em.asc');return d.map(rowToLegal);}
 
 async function initLegal(){
@@ -782,13 +793,17 @@ function legalCardHTML(c,col){
     const txt=diff<0?`⚠️ Vencido há ${Math.abs(diff)}d`:diff===0?'⚠️ Vence hoje':`${diff}d restantes`;
     prazoBlock=`<div style="margin-top:7px;padding:6px 9px;border-radius:7px;background:${cor}12;border:1px solid ${cor}33;display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;font-weight:700;color:${cor}">📅 ${fmtDate(c.prazo)}</span><span style="font-size:10px;color:${cor};font-weight:600">${txt}</span></div>`;
   }
-  const socioNome=c.socio||c.responsavel||'';
   return`<div class="card" data-id="${c.id}" style="border-left-color:${col.color}">
     <div class="card-name">${esc(c.nome)}</div>
-    ${c.tipo?`<div style="margin:4px 0"><span class="badge" style="background:${col.color}18;color:${col.color}">${esc(c.tipo)}</span></div>`:''}
-    ${c.obs?`<div style="font-size:11px;color:#6b7280;margin-top:4px;line-height:1.4">${esc(c.obs.slice(0,80))}${c.obs.length>80?'…':''}</div>`:''}
+    ${c.tipo?`<div style="margin:3px 0 5px"><span class="badge" style="background:${col.color}18;color:${col.color}">${esc(c.tipo)}</span></div>`:''}
+    ${c.valor?`<div style="font-size:13px;font-weight:700;color:${col.color};margin-bottom:5px">${esc(c.valor)}</div>`:''}
+    <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">
+      ${c.socio?`<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:60px;flex-shrink:0">Sócio</span><span style="font-size:11px;color:#374151;font-weight:600">${esc(c.socio)}</span></div>`:''}
+      ${c.responsavel?`<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:60px;flex-shrink:0">Resp.</span><span style="font-size:11px;color:#374151">${esc(c.responsavel)}</span></div>`:''}
+      ${c.contato?`<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:60px;flex-shrink:0">Contato</span><span style="font-size:11px;color:#374151">${esc(c.contato)}</span></div>`:''}
+    </div>
+    ${c.obs?`<div style="font-size:11px;color:#6b7280;margin-top:6px;padding:6px 8px;background:#f9fafb;border-radius:7px;line-height:1.4">${esc(c.obs.slice(0,100))}${c.obs.length>100?'…':''}</div>`:''}
     ${prazoBlock}
-    ${socioNome?`<div class="card-foot"><div class="avatar" style="background:${col.color}22;color:${col.color}">${socioNome[0].toUpperCase()}</div><span style="font-size:10px;color:#6b7280;font-weight:600">${esc(socioNome)}</span></div>`:''}
   </div>`;
 }
 
@@ -810,7 +825,7 @@ function openNewLegal(col){
   const pill=document.getElementById('legal-new-pill');
   const st=LEGAL_ST[target];pill.style.background=st.bg;pill.style.color=st.color;pill.textContent=st.label;
   pill.dataset.col=target;
-  ['ln-nome','ln-resp','ln-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['ln-nome','ln-resp','ln-obs','ln-contato','ln-valor','ln-dados'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['ln-tipo','ln-socio'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const prazo=document.getElementById('ln-prazo');if(prazo)prazo.value='';
   document.getElementById('legal-new-overlay').classList.add('open');
@@ -824,7 +839,7 @@ async function saveLegalNew(){
   const col=document.getElementById('legal-new-pill').dataset.col||'nova';
   legalSaving=true;
   try{
-    await api('/legalizacoes',{method:'POST',body:JSON.stringify({id:uid(),nome,tipo:document.getElementById('ln-tipo').value,socio:document.getElementById('ln-socio').value,responsavel:document.getElementById('ln-resp').value,prazo:document.getElementById('ln-prazo').value,obs:document.getElementById('ln-obs').value,status:col})});
+    await api('/legalizacoes',{method:'POST',body:JSON.stringify({id:uid(),nome,tipo:document.getElementById('ln-tipo').value,valor:document.getElementById('ln-valor').value,socio:document.getElementById('ln-socio').value,responsavel:document.getElementById('ln-resp').value,contato:document.getElementById('ln-contato').value,prazo:document.getElementById('ln-prazo').value,dados_cliente:document.getElementById('ln-dados').value,obs:document.getElementById('ln-obs').value,status:col})});
     legalItems=await loadLegal();legalHash=hsh(legalItems);
     closeLegalNew();renderLegal();showToast('✦ Solicitação adicionada');
   }catch(e){alert('Erro: '+e.message);}
@@ -845,11 +860,14 @@ function openLegalEdit(id){
       <div class="field"><label>Cliente / Empresa</label><input id="le-nome" value="${esc(c.nome)}"/></div>
       <div class="grid2">
         <div class="field"><label>Tipo de Serviço</label><select id="le-tipo"><option value="">— Selecionar —</option>${['Abertura de Empresa','Encerramento','Alteração Contratual','Alvará','Regularização Fiscal','Certidão','Procuração','Outro'].map(t=>`<option ${c.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
-        <div class="field"><label>Sócio Responsável</label><select id="le-socio"><option value="">— Selecionar —</option>${['Pedro','Luciano','Rafael'].map(s=>`<option ${c.socio===s?'selected':''}>${s}</option>`).join('')}</select></div>
-        <div class="field"><label>Responsável Interno</label><input id="le-resp" value="${esc(c.responsavel||'')}"/></div>
+        <div class="field"><label>Valor do Serviço</label><input id="le-valor" value="${esc(c.valor||'')}" placeholder="R$ 0,00"/></div>
+        <div class="field"><label>Sócio Advice</label><select id="le-socio"><option value="">— Selecionar —</option>${['Pedro','Luciano','Rafael'].map(s=>`<option ${c.socio===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div class="field"><label>Responsável pela Empresa</label><input id="le-resp" value="${esc(c.responsavel||'')}"/></div>
+        <div class="field"><label>Contato</label><input id="le-contato" value="${esc(c.contato||'')}" placeholder="Telefone ou e-mail"/></div>
         <div class="field"><label>Prazo / Previsão</label><input type="date" id="le-prazo" value="${c.prazo||''}"/></div>
       </div>
-      <div class="field"><label>Descrição / Observações</label><textarea id="le-obs">${esc(c.obs||'')}</textarea></div>
+      <div class="field"><label>Dados do Cliente (para o processo)</label><textarea id="le-dados">${esc(c.dados_cliente||'')}</textarea></div>
+      <div class="field"><label>Observações</label><textarea id="le-obs">${esc(c.obs||'')}</textarea></div>
     </div>
     <div class="sheet-foot">
       <div class="foot-row">${pv?`<button class="btn" onclick="legalMover('${c.id}','${pv}')">← ${LEGAL_ST[pv].label}</button>`:''}${nx?`<button class="btn btn-blue" onclick="legalMover('${c.id}','${nx}')">Mover → ${LEGAL_ST[nx].label}</button>`:''}</div>
@@ -862,7 +880,7 @@ function closeLegalEdit(){document.getElementById('legal-edit-overlay').classLis
 async function legalSalvar(id){
   legalSaving=true;
   try{
-    await api(`/legalizacoes?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({nome:document.getElementById('le-nome').value,tipo:document.getElementById('le-tipo').value,socio:document.getElementById('le-socio').value,responsavel:document.getElementById('le-resp').value,prazo:document.getElementById('le-prazo').value,obs:document.getElementById('le-obs').value})});
+    await api(`/legalizacoes?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({nome:document.getElementById('le-nome').value,tipo:document.getElementById('le-tipo').value,valor:document.getElementById('le-valor').value,socio:document.getElementById('le-socio').value,responsavel:document.getElementById('le-resp').value,contato:document.getElementById('le-contato').value,prazo:document.getElementById('le-prazo').value,dados_cliente:document.getElementById('le-dados').value,obs:document.getElementById('le-obs').value})});
     legalItems=await loadLegal();legalHash=hsh(legalItems);closeLegalEdit();renderLegal();showToast('✦ Salvo');
   }catch(e){alert('Erro: '+e.message);}
   legalSaving=false;
