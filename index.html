@@ -336,10 +336,23 @@ async function loadKb(){const d=await api('/clientes?order=criado_em.asc');retur
 async function initKb(){
   try{
     clients=await loadKb();kbHash=hsh(clients);
+    // Carregar processos de legalização para exibir no Pipeline
+    try{legalItems=await loadLegal();legalHash=hsh(legalItems);}catch(e){console.warn('Legal:',e.message);}
     document.getElementById('loading-kb').style.display='none';
     document.getElementById('board').style.display='flex';
     renderKb();
-    setInterval(async()=>{if(kbSaving)return;try{const f=await loadKb();const h=hsh(f);if(h!==kbHash){clients=f;kbHash=h;renderKb();showToast('✦ Atualizado');}}catch{}},4000);
+    setInterval(async()=>{
+      if(kbSaving)return;
+      try{
+        const f=await loadKb();const h=hsh(f);
+        if(h!==kbHash){clients=f;kbHash=h;renderKb();}
+      }catch{}
+      // Atualizar legalizações para manter sincronizado no Pipeline
+      try{
+        const fl=await loadLegal();const hl=hsh(fl);
+        if(hl!==legalHash){legalItems=fl;legalHash=hl;renderKb();}
+      }catch{}
+    },4000);
   }catch(e){
     document.getElementById('loading-kb').innerHTML=`<div style="text-align:center"><div style="font-size:32px;margin-bottom:10px">⚠️</div><div style="color:#dc2626;font-weight:600">Erro ao conectar</div><div style="color:#9ca3af;font-size:12px;margin-top:6px">${e.message}</div><button onclick="initKb()" style="margin-top:14px;padding:9px 20px;border-radius:9px;border:none;background:#111827;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Tentar novamente</button></div>`;
   }
@@ -454,6 +467,27 @@ function renderKb(){
     if(col.id==='prospeccao'){
       const total=cards.reduce((a,c)=>a+parseBRL(c.honorarios),0);
       extra=`<div style="background:${col.color}22;border:1px solid ${col.color}44;border-radius:9px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;font-weight:700;color:${col.color};text-transform:uppercase;letter-spacing:.06em">Total potencial</span><span style="font-size:14px;font-weight:700;color:${col.color}">${fmtBRL(total)}</span></div>`;
+    }
+    // Coluna Legalização: mostrar processos finalizados da aba Legal (clicáveis)
+    if(col.id==='legalizacao'){
+      const finalizados=legalItems.filter(l=>l.status==='finalizado'&&l.tipo==='Abertura de Empresa');
+      if(finalizados.length>0){
+        extra+=`<div style="background:#16a34a12;border:1px solid #16a34a33;border-radius:9px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">✅ Processos Finalizados</div>
+          ${finalizados.map(l=>`
+            <div onclick="openLegalFromPipeline('${l.id}')" style="background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid #e5e7eb;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+              <div style="font-size:12px;font-weight:700;color:#111827">${esc(l.nome)}</div>
+              ${l.tipo?`<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px">${esc(l.tipo)}</div>`:''}
+              ${l.valor?`<div style="font-size:12px;font-weight:700;color:#16a34a;margin-top:2px">${esc(l.valor)}</div>`:''}
+              <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">
+                ${l.socio?`<div style="display:flex;gap:4px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:52px;flex-shrink:0">Sócio</span><span style="font-size:10px;color:#374151;font-weight:600">${esc(l.socio)}</span></div>`:''}
+                ${l.responsavel?`<div style="display:flex;gap:4px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:52px;flex-shrink:0">Resp.</span><span style="font-size:10px;color:#374151">${esc(l.responsavel)}</span></div>`:''}
+                ${l.contato?`<div style="display:flex;gap:4px"><span style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;width:52px;flex-shrink:0">Contato</span><span style="font-size:10px;color:#374151">${esc(l.contato)}</span></div>`:''}
+              </div>
+              <div style="margin-top:6px;font-size:9px;color:#9ca3af;text-align:right">Toque para editar →</div>
+            </div>`).join('')}
+        </div>`;
+      }
     }
     extra+=rankingHTML(cards,col);
     el.innerHTML=`<div class="col-hdr"><div class="col-dot" style="background:${col.color}"></div><span class="col-title">${col.label}</span><span class="col-count">${cards.length}</span></div>${extra}${cards.length===0?'<div class="empty">Nenhum cliente</div>':''}${cards.map(c=>cardHTML(c,col)).join('')}<button class="add-btn" data-col="${col.id}">+ Novo cliente</button>`;
@@ -764,23 +798,38 @@ async function loadLegal(){const d=await api('/legalizacoes?order=criado_em.asc'
 async function initLegal(){
   const fab=document.getElementById('fab-legal');
   if(fab)fab.style.display='flex';
-  try{
-    legalItems=await loadLegal();legalHash=hsh(legalItems);
-  }catch(e){
-    // Tabela pode não existir ainda — mostra vazio
-    legalItems=[];legalHash='[]';
-    console.warn('Legalização:', e.message);
+  const loadingEl=document.getElementById('loading-legal');
+  const boardEl=document.getElementById('legal-board');
+  // Sempre tenta carregar — se já tem dados mostra imediatamente e atualiza em segundo plano
+  if(legalItems.length>0){
+    if(loadingEl)loadingEl.style.display='none';
+    if(boardEl)boardEl.style.display='flex';
+    renderLegal();
   }
-  document.getElementById('loading-legal').style.display='none';
-  document.getElementById('legal-board').style.display='flex';
+  // Atualiza em segundo plano (ou carrega pela primeira vez)
+  try{
+    const fresh=await loadLegal();
+    legalItems=fresh;legalHash=hsh(fresh);
+  }catch(e){
+    if(legalItems.length===0)legalItems=[];
+    console.warn('Legal load:', e.message);
+  }
+  if(loadingEl)loadingEl.style.display='none';
+  if(boardEl)boardEl.style.display='flex';
   renderLegal();
-  setInterval(async()=>{
-    if(legalSaving)return;
-    try{
-      const f=await loadLegal();const h=hsh(f);
-      if(h!==legalHash){legalItems=f;legalHash=h;renderLegal();showToast('✦ Legalização atualizada');}
-    }catch{}
-  },4000);
+  // Polling — inicia apenas uma vez
+  if(!window._legalPollStarted){
+    window._legalPollStarted=true;
+    setInterval(async()=>{
+      if(legalSaving)return;
+      try{
+        const f=await loadLegal();const h=hsh(f);
+        if(h!==legalHash){legalItems=f;legalHash=h;renderLegal();
+          if(document.getElementById('page-kanban').classList.contains('active'))renderKb();
+        }
+      }catch{}
+    },4000);
+  }
 }
 
 function legalCardHTML(c,col){
@@ -902,6 +951,78 @@ async function legalDeletar(id){
     legalItems=await loadLegal();legalHash=hsh(legalItems);closeLegalEdit();renderLegal();showToast('✦ Removido');
   }catch(e){alert('Erro: '+e.message);}
   legalSaving=false;
+}
+
+// Abrir processo legal direto do Pipeline com opção de mover para etapas do Pipeline
+function openLegalFromPipeline(id){
+  const c=legalItems.find(x=>x.id===id);
+  if(!c){showToast('Processo não encontrado');return;}
+  const sheet=document.getElementById('edit-sheet');
+  sheet.innerHTML=`
+    <div class="sheet-head">
+      <div style="min-width:0">
+        <div class="sheet-title">${esc(c.nome)}</div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:4px">
+          <span class="status-pill" style="background:#dcfce7;color:#15803d">✅ Legalização Finalizada</span>
+          ${c.tipo?`<span class="status-pill" style="background:#e0f2fe;color:#0369a1">${esc(c.tipo)}</span>`:''}
+        </div>
+      </div>
+      <button class="close-btn" onclick="closeEdit()">×</button>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">📋 Dados do Processo</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${c.valor?`<div style="display:flex;gap:8px"><span style="font-size:11px;font-weight:700;color:#6b7280;width:80px;flex-shrink:0">Valor</span><span style="font-size:13px;font-weight:700;color:#16a34a">${esc(c.valor)}</span></div>`:''}
+          ${c.socio?`<div style="display:flex;gap:8px"><span style="font-size:11px;font-weight:700;color:#6b7280;width:80px;flex-shrink:0">Sócio</span><span style="font-size:13px;color:#111827;font-weight:600">${esc(c.socio)}</span></div>`:''}
+          ${c.responsavel?`<div style="display:flex;gap:8px"><span style="font-size:11px;font-weight:700;color:#6b7280;width:80px;flex-shrink:0">Responsável</span><span style="font-size:13px;color:#374151">${esc(c.responsavel)}</span></div>`:''}
+          ${c.contato?`<div style="display:flex;gap:8px"><span style="font-size:11px;font-weight:700;color:#6b7280;width:80px;flex-shrink:0">Contato</span><span style="font-size:13px;color:#374151">${esc(c.contato)}</span></div>`:''}
+          ${c.obs?`<div style="display:flex;gap:8px"><span style="font-size:11px;font-weight:700;color:#6b7280;width:80px;flex-shrink:0">Obs.</span><span style="font-size:12px;color:#6b7280">${esc(c.obs)}</span></div>`:''}
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">🚀 Iniciar no Pipeline</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${COLS.filter(col=>['prospeccao','entrada','legalizacao','onboarding'].includes(col.id)).map(col=>`
+          <button onclick="moverLegalParaPipeline('${id}','${col.id}')" style="padding:10px 8px;border-radius:10px;border:2px solid ${col.color};background:${col.color}12;color:${col.color};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.background='${col.color}';this.style.color='#fff'" onmouseout="this.style.background='${col.color}12';this.style.color='${col.color}'">
+            ${ST[col.id].label}
+          </button>`).join('')}
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <div class="foot-row">
+        <button class="btn" onclick="closeEdit()">Fechar</button>
+        <button class="btn btn-primary" onclick="closeEdit();switchPage('legal');setTimeout(()=>openLegalEdit('${id}'),300)">Editar na Legalização</button>
+      </div>
+    </div>`;
+  document.getElementById('edit-overlay').classList.add('open');
+}
+
+async function moverLegalParaPipeline(legalId, pipelineStatus){
+  const c=legalItems.find(x=>x.id===legalId);
+  if(!c)return;
+  kbSaving=true;
+  try{
+    // Criar novo cliente no Pipeline com dados da Legalização
+    const novoId=uid();
+    await api('/clientes',{method:'POST',body:JSON.stringify({
+      id:novoId,
+      nome:c.nome,
+      segmento:'Serviço',
+      responsavel:c.responsavel||'',
+      socio:c.socio||'',
+      telefone:c.contato||'',
+      email:'',cnpj:'',honorarios:c.valor||'',
+      obs:'Vindo da Legalização: '+(c.tipo||''),
+      data_entrada:new Date().toISOString().slice(0,10),
+      data_onboarding:'',regime:'',
+      folha:false,contabil:false,
+      status:pipelineStatus
+    })});
+    clients=await loadKb();kbHash=hsh(clients);
+    closeEdit();renderKb();
+    showToast('✦ Cliente adicionado ao Pipeline: '+ST[pipelineStatus].label);
+  }catch(e){alert('Erro: '+e.message);}
+  kbSaving=false;
 }
 
 // Override switchPage to handle legal tab
