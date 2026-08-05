@@ -337,7 +337,14 @@ async function initKb(){
   try{
     clients=await loadKb();kbHash=hsh(clients);
     // Carregar processos de legalização para exibir no Pipeline
-    try{legalItems=await loadLegal();legalHash=hsh(legalItems);}catch(e){console.warn('Legal:',e.message);}
+    try{
+      legalItems=await loadLegal();
+      legalHash=hsh(legalItems);
+      console.log('Legal carregado:',legalItems.length,'itens, finalizados abertura:',legalItems.filter(l=>l.status==='finalizado'&&l.tipo==='Abertura de Empresa').length);
+    }catch(e){
+      console.warn('Legal erro:',e.message);
+      legalItems=[];legalHash='[]';
+    }
     document.getElementById('loading-kb').style.display='none';
     document.getElementById('board').style.display='flex';
     renderKb();
@@ -793,7 +800,7 @@ const LEGAL_PREV={solicitacao:null,viabilidade:'solicitacao',dbe:'viabilidade',r
 let legalItems=[],legalHash='',legalSaving=false;
 
 function rowToLegal(r){return{id:r.id,nome:r.nome,tipo:r.tipo,socio:r.socio,responsavel:r.responsavel,contato:r.contato,prazo:r.prazo,obs:r.obs,valor:r.valor,dados_cliente:r.dados_cliente,status:r.status,criado_em:r.criado_em};}
-async function loadLegal(){const d=await api('/legalizacoes?order=criado_em.asc');return d.map(rowToLegal);}
+async function loadLegal(){const d=await api('/processos?order=criado_em.asc');return d.map(rowToLegal);}
 
 async function initLegal(){
   const fab=document.getElementById('fab-legal');
@@ -888,7 +895,7 @@ async function saveLegalNew(){
   const col=document.getElementById('legal-new-pill').dataset.col||'nova';
   legalSaving=true;
   try{
-    await api('/legalizacoes',{method:'POST',body:JSON.stringify({id:uid(),nome,tipo:document.getElementById('ln-tipo').value,valor:document.getElementById('ln-valor').value,socio:document.getElementById('ln-socio').value,responsavel:document.getElementById('ln-resp').value,contato:document.getElementById('ln-contato').value,prazo:document.getElementById('ln-prazo').value,dados_cliente:document.getElementById('ln-dados').value,obs:document.getElementById('ln-obs').value,status:col})});
+    await api('/processos',{method:'POST',body:JSON.stringify({id:uid(),nome,tipo:document.getElementById('ln-tipo').value,valor:document.getElementById('ln-valor').value,socio:document.getElementById('ln-socio').value,responsavel:document.getElementById('ln-resp').value,contato:document.getElementById('ln-contato').value,prazo:document.getElementById('ln-prazo').value,dados_cliente:document.getElementById('ln-dados').value,obs:document.getElementById('ln-obs').value,status:col})});
     legalItems=await loadLegal();legalHash=hsh(legalItems);
     closeLegalNew();renderLegal();showToast('✦ Solicitação adicionada');
   }catch(e){alert('Erro: '+e.message);}
@@ -929,7 +936,7 @@ function closeLegalEdit(){document.getElementById('legal-edit-overlay').classLis
 async function legalSalvar(id){
   legalSaving=true;
   try{
-    await api(`/legalizacoes?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({nome:document.getElementById('le-nome').value,tipo:document.getElementById('le-tipo').value,valor:document.getElementById('le-valor').value,socio:document.getElementById('le-socio').value,responsavel:document.getElementById('le-resp').value,contato:document.getElementById('le-contato').value,prazo:document.getElementById('le-prazo').value,dados_cliente:document.getElementById('le-dados').value,obs:document.getElementById('le-obs').value})});
+    await api(`/processos?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({nome:document.getElementById('le-nome').value,tipo:document.getElementById('le-tipo').value,valor:document.getElementById('le-valor').value,socio:document.getElementById('le-socio').value,responsavel:document.getElementById('le-resp').value,contato:document.getElementById('le-contato').value,prazo:document.getElementById('le-prazo').value,dados_cliente:document.getElementById('le-dados').value,obs:document.getElementById('le-obs').value})});
     legalItems=await loadLegal();legalHash=hsh(legalItems);closeLegalEdit();renderLegal();showToast('✦ Salvo');
   }catch(e){alert('Erro: '+e.message);}
   legalSaving=false;
@@ -938,7 +945,7 @@ async function legalSalvar(id){
 async function legalMover(id,status){
   legalSaving=true;
   try{
-    await api(`/legalizacoes?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({status})});
+    await api(`/processos?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({status})});
     legalItems=await loadLegal();legalHash=hsh(legalItems);closeLegalEdit();renderLegal();showToast('✦ Movido para '+LEGAL_ST[status].label);
   }catch(e){alert('Erro: '+e.message);}
   legalSaving=false;
@@ -947,7 +954,7 @@ async function legalMover(id,status){
 async function legalDeletar(id){
   if(!confirm('Remover este processo?'))return;legalSaving=true;
   try{
-    await api(`/legalizacoes?id=eq.${id}`,{method:'DELETE'});
+    await api(`/processos?id=eq.${id}`,{method:'DELETE'});
     legalItems=await loadLegal();legalHash=hsh(legalItems);closeLegalEdit();renderLegal();showToast('✦ Removido');
   }catch(e){alert('Erro: '+e.message);}
   legalSaving=false;
