@@ -807,47 +807,23 @@ async function initLegal(){
   if(fab)fab.style.display='flex';
   const loadingEl=document.getElementById('loading-legal');
   const boardEl=document.getElementById('legal-board');
-
-  // Mostrar imediatamente se já tem dados
-  if(legalItems.length>0){
-    if(loadingEl)loadingEl.style.display='none';
-    if(boardEl){boardEl.style.display='flex';}
-    renderLegal();
-  }
-
-  // Timeout de segurança — nunca trava mais de 5s
-  const safetyTimer=setTimeout(()=>{
-    if(loadingEl&&loadingEl.style.display!=='none'){
-      loadingEl.style.display='none';
-      if(boardEl)boardEl.style.display='flex';
-      renderLegal();
-    }
-  },5000);
-
-  // Tentar carregar
-  try{
-    const fresh=await loadLegal();
-    legalItems=fresh;legalHash=hsh(fresh);
-  }catch(e){
-    if(legalItems.length===0)legalItems=[];
-    console.warn('Legal:', e.message);
-  }
-  clearTimeout(safetyTimer);
+  // Mostrar imediatamente — nunca bloqueia
   if(loadingEl)loadingEl.style.display='none';
   if(boardEl)boardEl.style.display='flex';
   renderLegal();
-
+  // Carregar dados em segundo plano
+  loadLegal().then(f=>{legalItems=f;legalHash=hsh(f);renderLegal();}).catch(e=>console.warn('Legal:',e.message));
   // Polling — inicia apenas uma vez
   if(!window._legalPollStarted){
     window._legalPollStarted=true;
     setInterval(async()=>{
       if(legalSaving)return;
-      try{
-        const f=await loadLegal();const h=hsh(f);
+      loadLegal().then(f=>{
+        const h=hsh(f);
         if(h!==legalHash){legalItems=f;legalHash=h;renderLegal();
           if(document.getElementById('page-kanban').classList.contains('active'))renderKb();
         }
-      }catch{}
+      }).catch(()=>{});
     },4000);
   }
 }
@@ -1054,8 +1030,15 @@ window.switchPage=function(p){
   _origSwitchPage(p);
   const fab=document.getElementById('fab-legal');
   if(fab)fab.style.display=p==='legal'?'flex':'none';
-  if(p==='legal'&&legalItems.length===0&&document.getElementById('loading-legal').style.display!=='none'){
-    initLegal();
+  if(p==='legal'){
+    // Sempre reinicia o legal quando muda para a aba
+    const loadingEl=document.getElementById('loading-legal');
+    const boardEl=document.getElementById('legal-board');
+    if(loadingEl)loadingEl.style.display='none';
+    if(boardEl)boardEl.style.display='flex';
+    renderLegal();
+    // Tenta atualizar dados em segundo plano
+    loadLegal().then(f=>{legalItems=f;legalHash=hsh(f);renderLegal();}).catch(()=>{});
   }
 };
 
