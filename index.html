@@ -249,8 +249,8 @@ tr:hover td{background:#f9fafb}
 <div class="toast" id="toast"></div>
 
 <script>
-const SUPA_URL='https://uezenhprvilatvzidjkr.supabase.co/rest/v1';
-const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlemVuaHBydmlsYXR2emlkamtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4Nzk5MTAsImV4cCI6MjA5MjQ1NTkxMH0.v23laxRdOaKVf8bQS4MIiDtTFxmg21RgI05qNdKR3GE';
+const SUPA_URL='https://enkadazlxdflbwpaqwhg.supabase.co/rest/v1';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVua2FkYXpseGRmbGJ3cGFxd2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5NDA2ODcsImV4cCI6MjEwMTUxNjY4N30.FwmiVWjo3Jn39o8cb081KUAvRhUMF7p3vSqA-t2p5Uc';
 const HDR={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
 
 async function api(path,opts={}){
@@ -755,13 +755,21 @@ async function initLegal(){
   if(fab)fab.style.display='flex';
   try{
     legalItems=await loadLegal();legalHash=hsh(legalItems);
-    document.getElementById('loading-legal').style.display='none';
-    document.getElementById('legal-board').style.display='flex';
-    renderLegal();
-    setInterval(async()=>{if(legalSaving)return;try{const f=await loadLegal();const h=hsh(f);if(h!==legalHash){legalItems=f;legalHash=h;renderLegal();showToast('✦ Legalização atualizada');}}catch{}},4000);
   }catch(e){
-    document.getElementById('loading-legal').innerHTML=`<div style="text-align:center"><div style="font-size:32px;margin-bottom:10px">⚠️</div><div style="color:#dc2626;font-weight:600">Erro ao carregar</div><div style="color:#9ca3af;font-size:12px;margin-top:6px">${e.message}</div><button onclick="initLegal()" style="margin-top:14px;padding:9px 20px;border-radius:9px;border:none;background:#111827;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Tentar novamente</button></div>`;
+    // Tabela pode não existir ainda — mostra vazio
+    legalItems=[];legalHash='[]';
+    console.warn('Legalização:', e.message);
   }
+  document.getElementById('loading-legal').style.display='none';
+  document.getElementById('legal-board').style.display='flex';
+  renderLegal();
+  setInterval(async()=>{
+    if(legalSaving)return;
+    try{
+      const f=await loadLegal();const h=hsh(f);
+      if(h!==legalHash){legalItems=f;legalHash=h;renderLegal();showToast('✦ Legalização atualizada');}
+    }catch{}
+  },4000);
 }
 
 function legalCardHTML(c,col){
